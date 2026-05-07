@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>HOMNIX Admin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial;}
+body{background:#f5f3ff;color:#111;}
+header{background:linear-gradient(135deg,#6d28d9,#9333ea);color:white;padding:20px;text-align:center;font-size:28px;font-weight:bold;}
+.container{padding:20px;}
+section{margin-bottom:30px;background:white;padding:20px;border-radius:16px;box-shadow:0 4px 18px rgba(0,0,0,0.06);}
+h2{color:#6d28d9;margin-bottom:12px;}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;}
+.card{background:white;padding:20px;border-radius:24px;box-shadow:0 4px 18px rgba(0,0,0,0.06);}
+.card h4{color:#6d28d9;margin-bottom:8px;}
+.card select,input,button{width:100%;padding:10px;margin-top:8px;border-radius:12px;border:1px solid #ddd;font-size:16px;}
+button{background:#6d28d9;color:white;border:none;cursor:pointer;margin-top:8px;}
+button:hover{opacity:0.9;}
+#profilePanel{position:fixed;top:0;right:-320px;width:320px;height:100%;background:white;box-shadow:-5px 0 20px rgba(0,0,0,0.1);padding:20px;transition:0.4s;z-index:999;}
+#profilePanel.active{right:0;}
+.menu-item{margin:12px 0;padding:12px;background:#f5f3ff;border-radius:12px;cursor:pointer;transition:0.2s;}
+.menu-item:hover{background:#e0d7ff;}
+@media(max-width:700px){.card-grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<header>HOMNIX Admin Dashboard</header>
+
+<div class="container">
+
+<!-- Admin Login -->
+<section id="loginSection">
+<h2>Admin Login</h2>
+<input type="email" id="adminEmail" placeholder="Email"><br>
+<input type="password" id="adminPassword" placeholder="Password"><br>
+<button onclick="adminLogin()">Login</button>
+</section>
+
+<!-- Admin Panel -->
+<section id="adminPanel" style="display:none;">
+<h2>Users</h2>
+<div class="card-grid" id="usersGrid"></div>
+
+<h2>Bookings</h2>
+<div class="card-grid" id="bookingsGrid"></div>
+
+<h2>Services / Prices</h2>
+<div class="card-grid" id="servicesGrid"></div>
+
+<button onclick="adminLogout()">Logout</button>
+</section>
+
+<!-- Profile Panel -->
+<div id="profilePanel">
+<h2>Admin Profile</h2>
+<div class="menu-item" id="profileName">Name: Admin</div>
+<div class="menu-item" onclick="adminLogout()">Logout</div>
+</div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getFirestore, collection, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+/* Firebase Config */
+const firebaseConfig = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_AUTH_DOMAIN",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE_STORAGE_BUCKET",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/* Admin Login */
+window.adminLogin = async function(){
+  const email = document.getElementById("adminEmail").value.trim();
+  const password = document.getElementById("adminPassword").value.trim();
+  if(!email || !password){alert("Enter email & password"); return;}
+  try{
+    await signInWithEmailAndPassword(auth,email,password);
+    document.getElementById("loginSection").style.display="none";
+    document.getElementById("adminPanel").style.display="block";
+    loadUsers();
+    loadBookings();
+    loadServices();
+  }catch(e){alert("Login failed: "+e.message);}
+};
+
+/* Admin Logout */
+window.adminLogout = async function(){
+  await signOut(auth);
+  location.reload();
+};
+
+/* Load Users */
+async function loadUsers(){
+  const grid=document.getElementById("usersGrid"); grid.innerHTML="";
+  const snapshot = await getDocs(collection(db,"users"));
+  snapshot.forEach(docSnap=>{
+    const data=docSnap.data();
+    grid.innerHTML+=`<div class="card"><h4>${data.name}</h4><p>${data.mobile}</p></div>`;
+  });
+}
+
+/* Load Bookings */
+async function loadBookings(){
+  const grid=document.getElementById("bookingsGrid"); grid.innerHTML="";
+  const snapshot = await getDocs(collection(db,"bookings"));
+  snapshot.forEach(docSnap=>{
+    const data=docSnap.data();
+    grid.innerHTML+=`<div class="card">
+      <h4>${data.customerId}</h4>
+      <p>Service: ${data.service}</p>
+      <p>Location: ${data.location}</p>
+      <p>Issue: ${data.issue}</p>
+      <select id="status_${docSnap.id}">
+        <option ${data.status==="Pending"?"selected":""}>Pending</option>
+        <option ${data.status==="Assigned"?"selected":""}>Assigned</option>
+        <option ${data.status==="Completed"?"selected":""}>Completed</option>
+        <option ${data.status==="Cancelled"?"selected":""}>Cancelled</option>
+      </select>
+      <input type="text" id="prof_${docSnap.id}" value="${data.assignedProfessional||''}" placeholder="Assign Professional">
+      <button onclick="updateBooking('${docSnap.id}')">Update</button>
+    </div>`;
+  });
+}
+
+/* Update Booking */
+window.updateBooking = async function(id){
+  const status=document.getElementById("status_"+id).value;
+  const prof=document.getElementById("prof_"+id).value;
+  await updateDoc(doc(db,"bookings",id),{status,assignedProfessional:prof});
+  alert("Booking updated");
+  loadBookings();
+}
+
+/* Load Services */
+async function loadServices(){
+  const grid=document.getElementById("servicesGrid"); grid.innerHTML="";
+  const snapshot = await getDocs(collection(db,"services"));
+  snapshot.forEach(docSnap=>{
+    const data=docSnap.data();
+    grid.innerHTML+=`<div class="card">
+      <h4>${data.service}</h4>
+      <input type="number" id="price_${docSnap.id}" value="${data.price}">
+      <button onclick="updatePrice('${docSnap.id}')">Update Price</button>
+    </div>`;
+  });
+}
+
+/* Update Price */
+window.updatePrice = async function(id){
+  const price = document.getElementById("price_"+id).value;
+  await updateDoc(doc(db,"services",id),{price:Number(price)});
+  alert("Price updated");
+  loadServices();
+}
+</script>
+</body>
+</html>
